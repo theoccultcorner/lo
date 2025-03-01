@@ -3,7 +3,6 @@ import { Container, Typography, Paper, CircularProgress, Button } from "@mui/mat
 import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db, auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
-import { GoogleMap, LoadScript, DirectionsRenderer } from "@react-google-maps/api";
 import Auth from "./Auth";
 
 const mapContainerStyle = { width: "100%", height: "400px" };
@@ -16,16 +15,32 @@ const DriverDashboard = () => {
   const [rides, setRides] = useState([]);
   const [currentRide, setCurrentRide] = useState(null);
   const [rideStage, setRideStage] = useState("idle");
-  const [directions, setDirections] = useState(null);
 
+  // ✅ Check Authentication & Driver Role
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
       if (authUser) {
+        console.log("✅ Authenticated User:", authUser.email);
+
+        if (!authUser.uid) {
+          console.error("❌ User ID is undefined!");
+          setError("User ID is missing.");
+          setLoading(false);
+          return;
+        }
+
         const driverRef = doc(db, "users", authUser.uid);
         try {
           const driverSnap = await getDoc(driverRef);
-          if (driverSnap.exists() && driverSnap.data().role === "driver") {
-            setDriver(driverSnap.data());
+          if (driverSnap.exists()) {
+            const driverData = driverSnap.data();
+            console.log("✅ Driver Data:", driverData);
+            if (driverData.role === "driver") {
+              setDriver(driverData);
+            } else {
+              console.warn("🚨 User is NOT a driver!");
+              setError("You are not authorized as a driver.");
+            }
           } else {
             setError("You are not authorized as a driver.");
           }
@@ -40,6 +55,24 @@ const DriverDashboard = () => {
     return () => unsubscribe();
   }, []);
 
+  // ✅ Track Driver's Location in Real Time
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setDriverLocation(location);
+          console.log("📍 Updated Driver Location:", location);
+        },
+        (error) => console.error("❌ Error getting location:", error),
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    }
+  }, []);
+
   useEffect(() => {
     if (driver) {
       const ridesQuery = query(collection(db, "rides"), where("status", "==", "pending"));
@@ -50,6 +83,7 @@ const DriverDashboard = () => {
     }
   }, [driver]);
 
+  // ✅ Accept Ride Function
   const acceptRide = async (ride) => {
     setCurrentRide(ride);
     setRideStage("toPickup");
@@ -66,41 +100,83 @@ const DriverDashboard = () => {
   const completeRide = async () => {
     setRideStage("idle");
     setCurrentRide(null);
-    await updateDoc(doc(db, "rides", currentRide.id), { status: "completed" });
+
+    const rideRef = doc(db, "rides", currentRide.id);
+    try {
+      await updateDoc(rideRef, { status: "completed" });
+      console.log("📌 Ride status updated to 'completed'");
+    } catch (err) {
+      console.error("❌ Error updating ride status:", err);
+    }
   };
 
-  const getDirections = (start, end) => {
-    const directionsService = new window.google.maps.DirectionsService();
-    directionsService.route(
-      { origin: start, destination: end, travelMode: window.google.maps.TravelMode.DRIVING },
-      (result, status) => {
-        if (status === "OK") {
-          setDirections(result);
-        } else {
-          console.error("Directions request failed due to", status);
-        }
-      }
+  if (loading) {
+    console.log("⌛ Loading Driver Dashboard...");
+    return (
+      <Container maxWidth="sm" sx={{ textAlign: "center", marginTop: 4 }}>
+        <Typography variant="h5">🔄 Loading Driver Dashboard...</Typography>
+        <CircularProgress />
+      </Container>
     );
-  };
+  }
 
-  if (loading) return <CircularProgress sx={{ margin: "auto", display: "block" }} />;
-  if (error) return <Typography color="error">{error}</Typography>;
-  if (!driver) return <Auth />;
+  if (error) {
+    console.error("🚨 Error:", error);
+    return (
+      <Container maxWidth="sm" sx={{ textAlign: "center", marginTop: 4 }}>
+        <Typography variant="h5" color="error">{error}</Typography>
+      </Container>
+    );
+  }
+
+  if (!driver) {
+    console.warn("🔑 User is not authenticated as a driver!");
+    return <Auth />;
+  }
 
   return (
     <Container maxWidth="md">
       <Paper elevation={3} sx={{ padding: 4, marginTop: 4, textAlign: "center", borderRadius: 3 }}>
-        <Typography variant="h4">Driver Dashboard 🚖</Typography>
+        <Typography variant="h4" gutterBottom fontWeight="bold">
+          Driver Dashboard 🚖
+        </Typography>
+        <Typography variant="h5" color="primary">
+          👤 Driver: {driver.name || "Unknown"}
+        </Typography>
+
+        {/* Show Available Rides */}
+        {rides.length > 0 ? (
+          rides.map((ride) => (
+            <Paper key={ride.id} elevation={3} sx={{ marginTop: 2, padding: 2 }}>
+              <Typography variant="h6">📍 Ride Request</Typography>
+              <Typography>Rider: {ride.riderName || "Unknown"}</Typography>
+              <Typography>Pickup: {ride.pickup.lat}, {ride.pickup.lng}</Typography>
+              <Typography>Destination: {ride.destination.lat}, {ride.destination.lng}</Typography>
+              <Typography color="primary">Fare: ${ride.price ? ride.price.toFixed(2) : "N/A"}</Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                fullWidth
+                sx={{ marginTop: 2 }}
+                onClick={() => acceptRide(ride)}
+              >
+                Accept Ride ✅
+              </Button>
+            </Paper>
+          ))
+        ) : (
+          <Typography>No available rides at the moment.</Typography>
+        )}
+
+        {/* If Ride is in Progress, Show Ride Details */}
         {currentRide && (
-          <>
-            <Typography variant="h6">Pickup: {currentRide.pickup.lat}, {currentRide.pickup.lng}</Typography>
-            <Typography variant="h6">Destination: {currentRide.destination.lat}, {currentRide.destination.lng}</Typography>
-            <Typography variant="h6" color="primary">Fare: ${currentRide.price ? currentRide.price.toFixed(2) : "N/A"}</Typography>
-            <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={["places"]}>
-              <GoogleMap mapContainerStyle={mapContainerStyle} center={driver.location || defaultCenter} zoom={13}>
-                {directions && <DirectionsRenderer directions={directions} />}
-              </GoogleMap>
-            </LoadScript>
+          <Paper elevation={3} sx={{ marginTop: 4, padding: 3 }}>
+            <Typography variant="h6" color="primary">🚕 Current Ride</Typography>
+            <Typography>Pickup: {currentRide.pickup.lat}, {currentRide.pickup.lng}</Typography>
+            <Typography>Destination: {currentRide.destination.lat}, {currentRide.destination.lng}</Typography>
+            <Typography>Status: {rideStage === "toPickup" ? "Driving to Pickup" : "Driving to Destination"}</Typography>
+            
+            {/* Buttons for different ride stages */}
             {rideStage === "toPickup" ? (
               <Button variant="contained" color="success" fullWidth sx={{ marginTop: 2 }} onClick={completePickup}>
                 Arrived at Pickup 🚦
@@ -110,27 +186,7 @@ const DriverDashboard = () => {
                 Complete Ride ✅
               </Button>
             )}
-          </>
-        )}
-
-        {!currentRide && (
-          <>
-            {rides.length > 0 ? (
-              rides.map((ride) => (
-                <Paper key={ride.id} elevation={3} sx={{ marginTop: 2, padding: 2 }}>
-                  <Typography variant="h6">Ride Request</Typography>
-                  <Typography>Pickup: {ride.pickup.lat}, {ride.pickup.lng}</Typography>
-                  <Typography>Destination: {ride.destination.lat}, {ride.destination.lng}</Typography>
-                  <Typography color="primary">Fare: ${ride.price ? ride.price.toFixed(2) : "N/A"}</Typography>
-                  <Button variant="contained" color="primary" fullWidth sx={{ marginTop: 2 }} onClick={() => acceptRide(ride)}>
-                    Accept Ride ✅
-                  </Button>
-                </Paper>
-              ))
-            ) : (
-              <Typography>No available rides at the moment.</Typography>
-            )}
-          </>
+          </Paper>
         )}
       </Paper>
     </Container>
