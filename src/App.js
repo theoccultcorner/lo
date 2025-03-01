@@ -65,7 +65,7 @@ const App = () => {
     <Router>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>Ride-Hailing App</Typography>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>LoGo</Typography>
           {user ? (
             <>
               <Typography variant="body1" sx={{ marginRight: 2 }}>
