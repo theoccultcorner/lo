@@ -1,0 +1,13 @@
+# Ignore environment variables
+.env
+firebase-admin.json
+.env.local
+.env.development
+.env.production
+
+# Ignore Firebase config
+src/firebaseConfig.js
+src/config.js
+
+# Ignore node_modules
+node_modules/
