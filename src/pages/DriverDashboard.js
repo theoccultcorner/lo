@@ -4,9 +4,7 @@ import { collection, query, where, onSnapshot, doc, updateDoc, getDoc } from "fi
 import { db, auth } from "../firebaseConfig";
 import { onAuthStateChanged } from "firebase/auth";
 import Auth from "./Auth";
-
-const mapContainerStyle = { width: "100%", height: "400px" };
-const defaultCenter = { lat: 34.953, lng: -120.435 }; // Santa Maria, CA (Example Default Location)
+import DriverMap from "../components/DriverMap"; // ✅ Importing DriverMap
 
 const DriverDashboard = () => {
   const [driver, setDriver] = useState(null);
@@ -15,6 +13,8 @@ const DriverDashboard = () => {
   const [rides, setRides] = useState([]);
   const [currentRide, setCurrentRide] = useState(null);
   const [rideStage, setRideStage] = useState("idle");
+  const [driverLocation, setDriverLocation] = useState(null);
+  const [directions, setDirections] = useState(null);
 
   // ✅ Check Authentication & Driver Role
   useEffect(() => {
@@ -38,7 +38,6 @@ const DriverDashboard = () => {
             if (driverData.role === "driver") {
               setDriver(driverData);
             } else {
-              console.warn("🚨 User is NOT a driver!");
               setError("You are not authorized as a driver.");
             }
           } else {
@@ -73,6 +72,7 @@ const DriverDashboard = () => {
     }
   }, []);
 
+  // ✅ Fetch Available Rides in Real-Time
   useEffect(() => {
     if (driver) {
       const ridesQuery = query(collection(db, "rides"), where("status", "==", "pending"));
@@ -83,12 +83,33 @@ const DriverDashboard = () => {
     }
   }, [driver]);
 
+  // ✅ Function to Get Directions
+  const getDirections = (start, end) => {
+    if (!start || !end) return;
+
+    const directionsService = new window.google.maps.DirectionsService();
+    directionsService.route(
+      {
+        origin: start,
+        destination: end,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === window.google.maps.DirectionsStatus.OK) {
+          setDirections(result);
+        } else {
+          console.error("❌ Directions request failed:", status);
+        }
+      }
+    );
+  };
+
   // ✅ Accept Ride Function
   const acceptRide = async (ride) => {
     setCurrentRide(ride);
     setRideStage("toPickup");
     await updateDoc(doc(db, "rides", ride.id), { status: "accepted", driverId: driver.id });
-    getDirections(driver.location, ride.pickup);
+    getDirections(driverLocation, ride.pickup);
   };
 
   const completePickup = async () => {
@@ -111,7 +132,6 @@ const DriverDashboard = () => {
   };
 
   if (loading) {
-    console.log("⌛ Loading Driver Dashboard...");
     return (
       <Container maxWidth="sm" sx={{ textAlign: "center", marginTop: 4 }}>
         <Typography variant="h5">🔄 Loading Driver Dashboard...</Typography>
@@ -121,7 +141,6 @@ const DriverDashboard = () => {
   }
 
   if (error) {
-    console.error("🚨 Error:", error);
     return (
       <Container maxWidth="sm" sx={{ textAlign: "center", marginTop: 4 }}>
         <Typography variant="h5" color="error">{error}</Typography>
@@ -130,7 +149,6 @@ const DriverDashboard = () => {
   }
 
   if (!driver) {
-    console.warn("🔑 User is not authenticated as a driver!");
     return <Auth />;
   }
 
@@ -143,6 +161,15 @@ const DriverDashboard = () => {
         <Typography variant="h5" color="primary">
           👤 Driver: {driver.name || "Unknown"}
         </Typography>
+
+        {/* Map for Live Tracking */}
+        <DriverMap
+          driverLocation={driverLocation}
+          pickup={currentRide?.pickup}
+          destination={currentRide?.destination}
+          rideStage={rideStage}
+          directions={directions}
+        />
 
         {/* Show Available Rides */}
         {rides.length > 0 ? (
@@ -176,7 +203,6 @@ const DriverDashboard = () => {
             <Typography>Destination: {currentRide.destination.lat}, {currentRide.destination.lng}</Typography>
             <Typography>Status: {rideStage === "toPickup" ? "Driving to Pickup" : "Driving to Destination"}</Typography>
             
-            {/* Buttons for different ride stages */}
             {rideStage === "toPickup" ? (
               <Button variant="contained" color="success" fullWidth sx={{ marginTop: 2 }} onClick={completePickup}>
                 Arrived at Pickup 🚦
