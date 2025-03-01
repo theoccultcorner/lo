@@ -96,7 +96,7 @@ const DriverDashboard = () => {
             <Typography variant="h6">Pickup: {currentRide.pickup.lat}, {currentRide.pickup.lng}</Typography>
             <Typography variant="h6">Destination: {currentRide.destination.lat}, {currentRide.destination.lng}</Typography>
             <Typography variant="h6" color="primary">Fare: ${currentRide.price ? currentRide.price.toFixed(2) : "N/A"}</Typography>
-            <LoadScript googleMapsApiKey="YOUR_GOOGLE_MAPS_API_KEY">
+            <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={["places"]}>
               <GoogleMap mapContainerStyle={mapContainerStyle} center={driver.location || defaultCenter} zoom={13}>
                 {directions && <DirectionsRenderer directions={directions} />}
               </GoogleMap>
