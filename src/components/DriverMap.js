@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { GoogleMap, LoadScript, Marker, DirectionsRenderer } from "@react-google-maps/api"; // Removed DirectionsService
+import { GoogleMap, LoadScript, Marker, DirectionsRenderer } from "@react-google-maps/api";
 
 const containerStyle = {
   width: "100%",
-  height: "400px",
+  height: "500px",
 };
 
 // Default to Santa Maria, CA
@@ -14,6 +14,13 @@ const defaultCenter = {
 
 const DriverMap = ({ driverLocation, pickup, destination, rideStage }) => {
   const [directions, setDirections] = useState(null);
+  const [driverMarker, setDriverMarker] = useState(driverLocation); // ✅ Track driver marker
+
+  useEffect(() => {
+    if (driverLocation) {
+      setDriverMarker(driverLocation); // Update car's position dynamically
+    }
+  }, [driverLocation]);
 
   useEffect(() => {
     if (driverLocation && pickup && rideStage === "toPickup") {
@@ -43,10 +50,15 @@ const DriverMap = ({ driverLocation, pickup, destination, rideStage }) => {
 
   return (
     <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY} libraries={["places"]}>
-      <GoogleMap mapContainerStyle={containerStyle} center={driverLocation || defaultCenter} zoom={13}>
-        {driverLocation && <Marker position={driverLocation} label="🚗 Driver" />}
+      <GoogleMap mapContainerStyle={containerStyle} center={driverMarker || defaultCenter} zoom={14}>
+        {/* ✅ Driver's Car Moving Live */}
+        {driverMarker && <Marker position={driverMarker} icon={{ url: "/car-icon.png", scaledSize: new window.google.maps.Size(40, 40) }} />}
+        
+        {/* ✅ Pickup & Destination Markers */}
         {pickup && <Marker position={pickup} label="📍 Pickup" />}
         {destination && <Marker position={destination} label="🏁 Destination" />}
+        
+        {/* ✅ Show Directions Route */}
         {directions && <DirectionsRenderer directions={directions} />}
       </GoogleMap>
     </LoadScript>
